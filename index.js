@@ -4,7 +4,14 @@ const { sql, poolPromise } = require("./db");
 
 const app = express();
 app.use(express.json());
-
+app.get("/", (req, res) => {
+  res.send(`
+    <h1>🚀 FAI Webhook Server</h1>
+    <p>Server đang chạy tại port ${process.env.PORT || 3000}</p>
+    <p>Webhook endpoint: <code>/webhook</code></p>
+    <p>Status: ✅ Active</p>
+  `);
+});
 app.post("/webhook", async (req, res) => {
   try {
     console.log("📥 Received request:", req.body);

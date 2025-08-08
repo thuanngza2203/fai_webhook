@@ -14,7 +14,7 @@ app.get("/", (req, res) => {
 });
 app.post("/webhook", async (req, res) => {
   try {
-    console.log("📥 Received request:", req.body);
+    console.log("📥 Received request body:", JSON.stringify(req.body, null, 2));
 
     const token = req.body.token;
     if (token !== process.env.WEBHOOK_SECRET) {
@@ -23,38 +23,56 @@ app.post("/webhook", async (req, res) => {
       });
     }
 
-    const { sender_id } = req.body;
-    if (!sender_id) {
-      return res.json({
-        messages: [{ text: "Thiếu thông tin sender_id." }],
-      });
-    }
-
     const pool = await poolPromise;
+    const requestDb = pool.request();
 
-    // Ví dụ query
-    const result = await pool
-      .request()
-      .input("EmployeeID", sql.VarChar, sender_id).query(`
-        SELECT TOP 1 FullName, Department
-        FROM Employee
-        WHERE EmployeeID = @EmployeeID
-      `);
+    // Gán tham số từ body (bạn sẽ chỉnh lại tên param cho đúng)
+    const {
+      UserGroupID,
+      EmpCode,
+      LSEquipmentCode,
+      FromHour,
+      FromMin,
+      ToHour,
+      ToMin,
+      Description,
+      Note,
+      LanguageID,
+    } = req.body;
 
-    if (result.recordset.length === 0) {
-      return res.json({
-        messages: [{ text: "Không tìm thấy nhân viên." }],
-      });
-    }
+    // Lệnh gọi stored procedure
+    requestDb
+      .input("Activity", sql.VarChar(50), "AddOrUpdate") // hoặc giá trị khác
+      .input("UserGroupID", sql.VarChar(50), UserGroupID || "Admin")
+      .input("LanguageID", sql.NChar(2), LanguageID || "VN")
+      .input("EmpCode", sql.NVarChar(255), EmpCode)
+      .input("LSEquipmentCode", sql.NVarChar(255), LSEquipmentCode)
+      .input("DateID", sql.NVarChar(255), null) // để trong stored tự dùng GETDATE()
+      .input("FromHour", sql.NVarChar(255), FromHour)
+      .input("FromMin", sql.NVarChar(255), FromMin)
+      .input("ToHour", sql.NVarChar(255), ToHour)
+      .input("ToMin", sql.NVarChar(255), ToMin)
+      .input("Description", sql.NVarChar(500), Description)
+      .input("Note", sql.NVarChar(255), Note)
+      .output("ReturnMessCode", sql.NVarChar(1))
+      .output("ReturnMess", sql.NVarChar(500));
 
-    const emp = result.recordset[0];
-    const reply = `Nhân viên: ${emp.FullName}\nPhòng ban: ${emp.Department}`;
+    // Thực thi
+    const result = await requestDb.execute(
+      "HR_spfrmRegistrationEquipment_Import"
+    );
+
+    // Đọc output
+    const code = result.output.ReturnMessCode;
+    const message = result.output.ReturnMess;
+
+    console.log("✅ Stored procedure executed:", { code, message });
 
     res.json({
-      messages: [{ text: reply }],
+      messages: [{ text: `Kết quả: ${message} (Code: ${code})` }],
     });
   } catch (err) {
-    console.error("❌ Error:", err);
+    console.error("❌ Error executing stored procedure:", err);
     res.json({
       messages: [{ text: "Đã xảy ra lỗi xử lý dữ liệu." }],
     });
